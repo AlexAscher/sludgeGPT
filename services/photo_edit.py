@@ -4,7 +4,7 @@ import subprocess
 from config import TEMP_DIR, OUTPUT_DIR
 
 
-def remux_file(input_file: str) -> str:
+def randomize_exif(input_file: str) -> str:
     """Перепаковывает видео в mp4, чтобы исправить битые moov atom."""
     output_file = os.path.join(TEMP_DIR, "remuxed.mp4")
     cmd = [
