@@ -43,3 +43,30 @@ def randomize_metadata(input_file: str, output_file: str = None) -> str:
     ]
     subprocess.run(cmd, check=True)
     return output_file
+
+
+from PIL import Image
+import piexif
+
+def rand_str(n=8):
+    return ''.join(random.choices(string.ascii_letters + string.digits, k=n))
+
+def randomize_exif(input_file: str, output_file: str = None) -> str:
+    """Меняет EXIF-метаданные у фото (Artist, Copyright, ImageDescription, Software, DateTime)."""
+    if output_file is None:
+        output_file = os.path.join(OUTPUT_DIR, os.path.basename(input_file))
+    img = Image.open(input_file)
+    exif_bytes = img.info.get('exif', None)
+    try:
+        exif_dict = piexif.load(exif_bytes) if exif_bytes else {"0th": {}, "Exif": {}, "GPS": {}, "1st": {}, "thumbnail": None}
+    except Exception:
+        exif_dict = {"0th": {}, "Exif": {}, "GPS": {}, "1st": {}, "thumbnail": None}
+    # Случайные значения для разных EXIF-полей
+    exif_dict['0th'][piexif.ImageIFD.Artist] = rand_str(8).encode()
+    exif_dict['0th'][piexif.ImageIFD.Copyright] = rand_str(12).encode()
+    exif_dict['0th'][piexif.ImageIFD.ImageDescription] = rand_str(16).encode()
+    exif_dict['0th'][piexif.ImageIFD.Software] = rand_str(10).encode()
+    exif_dict['0th'][piexif.ImageIFD.DateTime] = f"20{random.randint(10,29):02d}:{random.randint(1,12):02d}:{random.randint(1,28):02d} {random.randint(0,23):02d}:{random.randint(0,59):02d}:{random.randint(0,59):02d}".encode()
+    exif_bytes = piexif.dump(exif_dict)
+    img.convert('RGB').save(output_file, format='JPEG', exif=exif_bytes, quality=95)
+    return output_file
