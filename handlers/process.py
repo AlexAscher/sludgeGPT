@@ -8,7 +8,6 @@ from aiogram.types import Message, CallbackQuery
 from services.downloader import download_video
 from services.video_edit import randomize_metadata
 from services.photo_edit import randomize_exif
-from services.tools_edit import autocrop_photo, autocrop_video, video_to_gif
 import mimetypes
 import aiohttp
 import os
@@ -26,128 +25,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
-logger = logging.getLogger("autocrop_handler")
-
-@router.callback_query(F.data == "autocrop")
-async def autocrop_handler(callback: CallbackQuery):
-    try:
-        logger.info(f"Autocrop called. Message: {callback.message}")
-        # Определяем тип медиа
-        if callback.message.photo:
-            logger.info("Detected photo. Getting file_id...")
-            file_id = callback.message.photo[-1].file_id
-            logger.info(f"Photo file_id: {file_id}")
-            file = await callback.bot.get_file(file_id)
-            file_path = file.file_path
-            logger.info(f"Telegram file_path: {file_path}")
-            dest_path = os.path.join(TEMP_DIR, f"{file_id}.jpg")
-            logger.info(f"Downloading photo to {dest_path}")
-            await callback.bot.download_file(file_path, dest_path)
-            logger.info(f"Downloaded photo exists: {os.path.exists(dest_path)} size: {os.path.getsize(dest_path) if os.path.exists(dest_path) else 'N/A'}")
-            output_file = autocrop_photo(dest_path)
-            logger.info(f"Photo autocropped. Output: {output_file}")
-            logger.info(f"Autocropped photo exists: {os.path.exists(output_file)} size: {os.path.getsize(output_file) if os.path.exists(output_file) else 'N/A'}")
-            # Сначала отправляем как новое сообщение, чтобы получить file_id
-            try:
-                sent = await callback.message.answer_photo(types.FSInputFile(output_file), caption="✅ Cropped to square!")
-                logger.info(f"Sent photo message: {sent}")
-            except Exception as e:
-                logger.exception(f"Failed to send autocropped photo: {e}")
-                await callback.answer(f"Failed to send cropped photo: {e}", show_alert=True)
-                return
-            photo_file_id = sent.photo[-1].file_id if sent.photo else None
-            logger.info(f"photo_file_id: {photo_file_id}")
-            if photo_file_id:
-                try:
-                    await callback.message.edit_media(
-                        types.InputMediaPhoto(media=photo_file_id, caption="✅ Cropped to square!"),
-                        reply_markup=callback.message.reply_markup
-                    )
-                    logger.info("edit_media for photo successful")
-                    await sent.delete()
-                except Exception as e:
-                    logger.exception(f"edit_media for photo failed: {e}")
-                    await callback.answer(f"edit_media failed: {e}", show_alert=True)
-            else:
-                logger.warning("Failed to get file_id from sent photo.")
-                await callback.answer("Failed to upload cropped photo.", show_alert=True)
-        elif callback.message.video:
-            logger.info("Detected video. Getting file_id...")
-            file_id = callback.message.video.file_id
-            logger.info(f"Video file_id: {file_id}")
-            file = await callback.bot.get_file(file_id)
-            file_path = file.file_path
-            logger.info(f"Telegram file_path: {file_path}")
-            ext = os.path.splitext(file_path)[1] or ".mp4"
-            dest_path = os.path.join(TEMP_DIR, f"{file_id}{ext}")
-            logger.info(f"Downloading video to {dest_path}")
-            await callback.bot.download_file(file_path, dest_path)
-            logger.info(f"Downloaded video exists: {os.path.exists(dest_path)} size: {os.path.getsize(dest_path) if os.path.exists(dest_path) else 'N/A'}")
-            output_file = autocrop_video(dest_path)
-            logger.info(f"Video autocropped. Output: {output_file}")
-            logger.info(f"Autocropped video exists: {os.path.exists(output_file)} size: {os.path.getsize(output_file) if os.path.exists(output_file) else 'N/A'}")
-            if not os.path.exists(output_file):
-                logger.error(f"Autocropped video file not found: {output_file}")
-                await callback.answer(f"Autocropped video file not found: {output_file}", show_alert=True)
-                return
-            # Сначала отправляем как новое сообщение, чтобы получить file_id
-            try:
-                sent = await callback.message.answer_video(types.FSInputFile(output_file), caption="✅ Cropped to square!")
-                logger.info(f"Sent video message: {sent}")
-            except Exception as e:
-                logger.exception(f"Failed to send autocropped video: {e}")
-                await callback.answer(f"Failed to send cropped video: {e}", show_alert=True)
-                return
-            video_file_id = sent.video.file_id if sent.video else None
-            logger.info(f"video_file_id: {video_file_id}")
-            if video_file_id:
-                try:
-                    await callback.message.edit_media(
-                        types.InputMediaVideo(media=video_file_id, caption="✅ Cropped to square!"),
-                        reply_markup=callback.message.reply_markup
-                    )
-                    logger.info("edit_media for video successful")
-                    await sent.delete()
-                except Exception as e:
-                    logger.exception(f"edit_media for video failed: {e}")
-                    await callback.answer(f"edit_media failed: {e}", show_alert=True)
-            else:
-                logger.warning("Failed to get file_id from sent video.")
-                await callback.answer("Failed to upload cropped video.", show_alert=True)
-        else:
-            logger.warning("No photo or video detected in message.")
-            await callback.answer("Only works for photo or video!", show_alert=True)
-    except Exception as e:
-        logger.exception(f"Autocrop failed: {e}")
-        await callback.answer(f"Autocrop failed: {e}", show_alert=True)
-
-# Convert to GIF callback
-@router.callback_query(F.data == "convert_gif")
-async def convert_gif_handler(callback: CallbackQuery):
-    try:
-        if callback.message.video:
-            file_id = callback.message.video.file_id
-            file = await callback.bot.get_file(file_id)
-            file_path = file.file_path
-            ext = os.path.splitext(file_path)[1] or ".mp4"
-            dest_path = os.path.join(TEMP_DIR, f"{file_id}{ext}")
-            await callback.bot.download_file(file_path, dest_path)
-            output_file = video_to_gif(dest_path)
-            # Сначала отправляем GIF как новое сообщение, чтобы получить file_id
-            sent = await callback.message.answer_animation(types.FSInputFile(output_file), caption="✅ Converted to GIF!")
-            gif_file_id = sent.animation.file_id if sent.animation else None
-            if gif_file_id:
-                await callback.message.edit_media(
-                    types.InputMediaAnimation(media=gif_file_id, caption="✅ Converted to GIF!"),
-                    reply_markup=callback.message.reply_markup
-                )
-                await sent.delete()
-            else:
-                await callback.answer("Failed to upload GIF.", show_alert=True)
-        else:
-            await callback.answer("Only works for video!", show_alert=True)
-    except Exception as e:
-        await callback.answer(f"Convert to GIF failed: {e}", show_alert=True)
+logger_caption = logging.getLogger("caption_handler")
 
 
 
@@ -160,8 +38,6 @@ async def convert_gif_handler(callback: CallbackQuery):
 @router.callback_query(F.data == "tools")
 async def show_tools_menu(callback: CallbackQuery):
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton(text="Convert to GIF", callback_data="convert_gif")],
-        [types.InlineKeyboardButton(text="Autocrop", callback_data="autocrop")],
         [types.InlineKeyboardButton(text="⬅️ Go Back", callback_data="back")],
     ])
     # Если сообщение с медиа — используем edit_caption, иначе edit_text
