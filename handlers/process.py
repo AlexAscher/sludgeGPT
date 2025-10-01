@@ -280,11 +280,16 @@ async def process_copies(callback: CallbackQuery):
             return
         await callback.message.answer(f"⏳ Creating {count} copies...")
 
+        logging.info(f"S3_BUCKET_NAME: {S3_BUCKET_NAME}, type: {type(S3_BUCKET_NAME)}")
+        logging.info(f"S3_ENDPOINT: {S3_ENDPOINT}, type: {type(S3_ENDPOINT)}")
+        logging.info(f"filepath: {filepath}, media_type: {media_type}, count: {count}")
+
         session_id = str(uuid.uuid4())
         download_links = []
 
         for i in range(count):
             try:
+                logging.info(f"Creating copy {i+1}")
                 if media_type == "photo":
                     output_file = randomize_exif(filepath)
                 elif media_type == "video":
@@ -292,9 +297,13 @@ async def process_copies(callback: CallbackQuery):
                 else:
                     output_file = randomize_metadata(filepath)
 
+                logging.info(f"output_file: {output_file}, exists: {os.path.exists(output_file)}")
+
                 # Загружаем на S3
                 key = f"{session_id}/copy_{i+1}{os.path.splitext(output_file)[1]}"
+                logging.info(f"key: {key}, bucket: {S3_BUCKET_NAME}")
                 s3_client.upload_file(output_file, S3_BUCKET_NAME, key)
+                logging.info(f"Uploaded to S3: {key}")
 
                 # Получаем presigned URL
                 url = s3_client.generate_presigned_url(
@@ -302,10 +311,14 @@ async def process_copies(callback: CallbackQuery):
                     Params={'Bucket': S3_BUCKET_NAME, 'Key': key},
                     ExpiresIn=3600  # 1 час
                 )
-                download_links.append(f"Copy {i+1}: {url}")
+                logging.info(f"Presigned URL: {url[:50]}...")  # Log first 50 chars
+                download_links.append(url)
 
             except Exception as e:
+                logging.error(f"Error in copy {i+1}: {e}")
                 await callback.message.answer(f"❌ Error creating copy {i+1}: {e}")
+
+        logging.info(f"Created {len(download_links)} links")
 
         # Генерируем HTML-страницу с presigned URLs
         html_content = f"""<!DOCTYPE html>
@@ -337,7 +350,9 @@ async def process_copies(callback: CallbackQuery):
 
         # Загружаем HTML в S3
         html_key = f"{session_id}/index.html"
+        logging.info(f"Uploading HTML: {html_key}")
         s3_client.put_object(Bucket=S3_BUCKET_NAME, Key=html_key, Body=html_content, ContentType='text/html')
+        logging.info("HTML uploaded")
 
         # Получаем presigned URL для HTML
         page_url = s3_client.generate_presigned_url(
@@ -345,8 +360,10 @@ async def process_copies(callback: CallbackQuery):
             Params={'Bucket': S3_BUCKET_NAME, 'Key': html_key},
             ExpiresIn=3600
         )
+        logging.info(f"Page URL: {page_url[:50]}...")
 
         await callback.message.answer(f"✅ Your copies are ready! View and download them here: {page_url}")
 
     except Exception as e:
+        logging.error(f"Error in process_copies: {e}")
         await callback.answer(f"❌ Error: {e}", show_alert=True)

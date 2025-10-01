@@ -2,6 +2,7 @@ import os
 import shutil
 import subprocess
 from config import TEMP_DIR, OUTPUT_DIR
+import uuid
 
 
 def remux_file(input_file: str) -> str:
@@ -27,7 +28,7 @@ def random_string(n=8):
 def randomize_metadata(input_file: str, output_file: str = None) -> str:
     """Меняет метаданные видео (title, artist, comment) через ffmpeg."""
     if output_file is None:
-        output_file = os.path.join(OUTPUT_DIR, os.path.basename(input_file))
+        output_file = os.path.join(OUTPUT_DIR, f"{uuid.uuid4().hex}{os.path.splitext(input_file)[1]}")
     title = random_string(10)
     artist = random_string(10)
     comment = random_string(16)

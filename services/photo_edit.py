@@ -2,6 +2,7 @@ import os
 import shutil
 import subprocess
 from config import TEMP_DIR, OUTPUT_DIR
+import uuid
 
 
 def randomize_exif(input_file: str) -> str:
@@ -54,7 +55,7 @@ def rand_str(n=8):
 def randomize_exif(input_file: str, output_file: str = None) -> str:
     """Меняет EXIF-метаданные у фото (Artist, Copyright, ImageDescription, Software, DateTime)."""
     if output_file is None:
-        output_file = os.path.join(OUTPUT_DIR, os.path.basename(input_file))
+        output_file = os.path.join(OUTPUT_DIR, f"{uuid.uuid4().hex}{os.path.splitext(input_file)[1]}")
     img = Image.open(input_file)
     exif_bytes = img.info.get('exif', None)
     try:
