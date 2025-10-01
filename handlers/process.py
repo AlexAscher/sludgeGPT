@@ -13,7 +13,7 @@ import aiohttp
 import os
 import uuid
 import boto3
-from config import TEMP_DIR, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, S3_BUCKET_NAME, S3_REGION
+from config import TEMP_DIR, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, S3_BUCKET_NAME, S3_REGION, S3_ENDPOINT
 
 
 router = Router()
@@ -25,7 +25,8 @@ s3_client = boto3.client(
     's3',
     aws_access_key_id=AWS_ACCESS_KEY_ID,
     aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-    region_name=S3_REGION
+    region_name=S3_REGION,
+    endpoint_url=S3_ENDPOINT
 )
 
 # Импорт autocaption_video и регистрация caption_handler строго после router
@@ -306,9 +307,46 @@ async def process_copies(callback: CallbackQuery):
             except Exception as e:
                 await callback.message.answer(f"❌ Error creating copy {i+1}: {e}")
 
-        # Отправляем ссылки
-        links_text = "\n".join(download_links)
-        await callback.message.answer(f"✅ Your copies are ready! Download links (valid for 1 hour):\n{links_text}")
+        # Генерируем HTML-страницу с presigned URLs
+        html_content = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your File Copies</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; }}
+        .file-list {{ list-style: none; padding: 0; }}
+        .file-list li {{ margin: 10px 0; }}
+        .file-list a {{ color: #007bff; text-decoration: none; }}
+        .file-list a:hover {{ text-decoration: underline; }}
+    </style>
+</head>
+<body>
+    <h1>Your File Copies</h1>
+    <p>Here are your {count} processed copies. Click to download (links valid for 1 hour):</p>
+    <ul class="file-list">
+"""
+
+        for i, url in enumerate(download_links, 1):
+            html_content += f'        <li><a href="{url}" download>Copy {i}</a></li>\n'
+
+        html_content += """    </ul>
+</body>
+</html>"""
+
+        # Загружаем HTML в S3
+        html_key = f"{session_id}/index.html"
+        s3_client.put_object(Bucket=S3_BUCKET_NAME, Key=html_key, Body=html_content, ContentType='text/html')
+
+        # Получаем presigned URL для HTML
+        page_url = s3_client.generate_presigned_url(
+            'get_object',
+            Params={'Bucket': S3_BUCKET_NAME, 'Key': html_key},
+            ExpiresIn=3600
+        )
+
+        await callback.message.answer(f"✅ Your copies are ready! View and download them here: {page_url}")
 
     except Exception as e:
         await callback.answer(f"❌ Error: {e}", show_alert=True)
