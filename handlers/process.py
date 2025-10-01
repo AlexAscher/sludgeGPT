@@ -11,10 +11,22 @@ from services.photo_edit import randomize_exif
 import mimetypes
 import aiohttp
 import os
-from config import TEMP_DIR
+import uuid
+import boto3
+from config import TEMP_DIR, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, S3_BUCKET_NAME, S3_REGION
 
 
 router = Router()
+
+file_cache = {}
+
+# S3 client
+s3_client = boto3.client(
+    's3',
+    aws_access_key_id=AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+    region_name=S3_REGION
+)
 
 # Импорт autocaption_video и регистрация caption_handler строго после router
 
@@ -89,16 +101,28 @@ async def handle_photo(message: Message):
     file_path = file.file_path
     dest_path = os.path.join(TEMP_DIR, f"{photo.file_id}.jpg")
     await message.bot.download_file(file_path, dest_path)
-    output_file = randomize_exif(dest_path)
+    # Сохраняем в кэш
+    file_uuid = str(uuid.uuid4())
+    file_cache[file_uuid] = dest_path
+    # Вместо обработки, отправляем сообщение с выбором количества копий
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton(text="Download", callback_data="download_photo")],
-        [types.InlineKeyboardButton(text="Templates", callback_data="templates"), types.InlineKeyboardButton(text="Tools", callback_data="tools")],
-        [types.InlineKeyboardButton(text="Bulk Templates", callback_data="bulk_templates"), types.InlineKeyboardButton(text="Bulk Randomize", callback_data="bulk_randomize")],
-        [types.InlineKeyboardButton(text="Get Paid to Post 💰", callback_data="get_paid")],
-        [types.InlineKeyboardButton(text="Monthly Subscription", callback_data="monthly_sub")],
-        [types.InlineKeyboardButton(text="Annual Subscription (3 months free)", callback_data="annual_sub")],
+        [
+            types.InlineKeyboardButton(text="5", callback_data=f"copies|5|{file_uuid}|photo"),
+            types.InlineKeyboardButton(text="10", callback_data=f"copies|10|{file_uuid}|photo"),
+            types.InlineKeyboardButton(text="20", callback_data=f"copies|20|{file_uuid}|photo"),
+            types.InlineKeyboardButton(text="30", callback_data=f"copies|30|{file_uuid}|photo"),
+        ],
+        [
+            types.InlineKeyboardButton(text="40", callback_data=f"copies|40|{file_uuid}|photo"),
+            types.InlineKeyboardButton(text="50", callback_data=f"copies|50|{file_uuid}|photo"),
+            types.InlineKeyboardButton(text="75", callback_data=f"copies|75|{file_uuid}|photo"),
+            types.InlineKeyboardButton(text="100", callback_data=f"copies|100|{file_uuid}|photo"),
+        ],
+        [
+            types.InlineKeyboardButton(text="120", callback_data=f"copies|120|{file_uuid}|photo"),
+        ]
     ])
-    await message.answer_photo(types.FSInputFile(output_file), caption="✅ Done! Here is your photo with new metadata.", reply_markup=keyboard)
+    await message.answer("Detected post. How many copies do you want to make?", reply_markup=keyboard)
 
 # Обработка видео от пользователя
 @router.message(F.video)
@@ -109,16 +133,28 @@ async def handle_video(message: Message):
     ext = os.path.splitext(file_path)[1] or ".mp4"
     dest_path = os.path.join(TEMP_DIR, f"{video.file_id}{ext}")
     await message.bot.download_file(file_path, dest_path)
-    output_file = randomize_metadata(dest_path)
+    # Сохраняем в кэш
+    file_uuid = str(uuid.uuid4())
+    file_cache[file_uuid] = dest_path
+    # Вместо обработки, отправляем сообщение с выбором количества копий
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton(text="Download", callback_data="download_video")],
-        [types.InlineKeyboardButton(text="Templates", callback_data="templates"), types.InlineKeyboardButton(text="Tools", callback_data="tools")],
-        [types.InlineKeyboardButton(text="Bulk Templates", callback_data="bulk_templates"), types.InlineKeyboardButton(text="Bulk Randomize", callback_data="bulk_randomize")],
-        [types.InlineKeyboardButton(text="Get Paid to Post 💰", callback_data="get_paid")],
-        [types.InlineKeyboardButton(text="Monthly Subscription", callback_data="monthly_sub")],
-        [types.InlineKeyboardButton(text="Annual Subscription (3 months free)", callback_data="annual_sub")],
+        [
+            types.InlineKeyboardButton(text="5", callback_data=f"copies|5|{file_uuid}|video"),
+            types.InlineKeyboardButton(text="10", callback_data=f"copies|10|{file_uuid}|video"),
+            types.InlineKeyboardButton(text="20", callback_data=f"copies|20|{file_uuid}|video"),
+            types.InlineKeyboardButton(text="30", callback_data=f"copies|30|{file_uuid}|video"),
+        ],
+        [
+            types.InlineKeyboardButton(text="40", callback_data=f"copies|40|{file_uuid}|video"),
+            types.InlineKeyboardButton(text="50", callback_data=f"copies|50|{file_uuid}|video"),
+            types.InlineKeyboardButton(text="75", callback_data=f"copies|75|{file_uuid}|video"),
+            types.InlineKeyboardButton(text="100", callback_data=f"copies|100|{file_uuid}|video"),
+        ],
+        [
+            types.InlineKeyboardButton(text="120", callback_data=f"copies|120|{file_uuid}|video"),
+        ]
     ])
-    await message.answer_video(types.FSInputFile(output_file), caption="✅ Done! Here is your video with new metadata.", reply_markup=keyboard)
+    await message.answer("Detected post. How many copies do you want to make?", reply_markup=keyboard)
 
 
 
@@ -177,12 +213,30 @@ async def handle_link(message: Message):
                     raise Exception("The link does not point to a file, but to a web page.")
         if not filepath:
             raise Exception("File was not downloaded")
-        await message.answer(
-            f"✅ File saved: {filepath}\n\nChoose an action:",
-            reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
-                [types.InlineKeyboardButton(text="📥 Download (randomize metadata)", callback_data=f"download|{filepath}")]
-            ])
-        )
+        # Сохраняем в кэш
+        file_uuid = str(uuid.uuid4())
+        file_cache[file_uuid] = filepath
+        # Вместо кнопки download, отправляем сообщение с выбором количества копий
+        ext = os.path.splitext(filepath)[1].lower()
+        media_type = "photo" if ext in {'.jpg', '.jpeg', '.png', '.webp'} else "video" if ext in {'.mp4', '.mov', '.avi', '.webm'} else "document"
+        keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+            [
+                types.InlineKeyboardButton(text="5", callback_data=f"copies|5|{file_uuid}|{media_type}"),
+                types.InlineKeyboardButton(text="10", callback_data=f"copies|10|{file_uuid}|{media_type}"),
+                types.InlineKeyboardButton(text="20", callback_data=f"copies|20|{file_uuid}|{media_type}"),
+                types.InlineKeyboardButton(text="30", callback_data=f"copies|30|{file_uuid}|{media_type}"),
+            ],
+            [
+                types.InlineKeyboardButton(text="40", callback_data=f"copies|40|{file_uuid}|{media_type}"),
+                types.InlineKeyboardButton(text="50", callback_data=f"copies|50|{file_uuid}|{media_type}"),
+                types.InlineKeyboardButton(text="75", callback_data=f"copies|75|{file_uuid}|{media_type}"),
+                types.InlineKeyboardButton(text="100", callback_data=f"copies|100|{file_uuid}|{media_type}"),
+            ],
+            [
+                types.InlineKeyboardButton(text="120", callback_data=f"copies|120|{file_uuid}|{media_type}"),
+            ]
+        ])
+        await message.answer("Detected post. How many copies do you want to make?", reply_markup=keyboard)
     except Exception as e:
         await message.answer(f"❌ Failed to download file: {e}")
 
@@ -205,3 +259,56 @@ async def process_download(callback: CallbackQuery):
             await callback.message.answer_document(types.FSInputFile(output_file), caption="✅ Done! Here is your file with new metadata.")
     except Exception as e:
         await callback.message.answer(f"❌ Error: {e}")
+
+# Обработка выбора количества копий
+@router.callback_query(F.data.startswith("copies|"))
+async def process_copies(callback: CallbackQuery):
+    try:
+        parts = callback.data.split("|")
+        if len(parts) != 4:
+            await callback.answer("Invalid data", show_alert=True)
+            return
+        _, count_str, file_uuid, media_type = parts
+        count = int(count_str)
+        if count < 1 or count > 120:
+            await callback.answer("Invalid count", show_alert=True)
+            return
+        filepath = file_cache.get(file_uuid)
+        if not filepath:
+            await callback.answer("File not found", show_alert=True)
+            return
+        await callback.message.answer(f"⏳ Creating {count} copies...")
+
+        session_id = str(uuid.uuid4())
+        download_links = []
+
+        for i in range(count):
+            try:
+                if media_type == "photo":
+                    output_file = randomize_exif(filepath)
+                elif media_type == "video":
+                    output_file = randomize_metadata(filepath)
+                else:
+                    output_file = randomize_metadata(filepath)
+
+                # Загружаем на S3
+                key = f"{session_id}/copy_{i+1}{os.path.splitext(output_file)[1]}"
+                s3_client.upload_file(output_file, S3_BUCKET_NAME, key)
+
+                # Получаем presigned URL
+                url = s3_client.generate_presigned_url(
+                    'get_object',
+                    Params={'Bucket': S3_BUCKET_NAME, 'Key': key},
+                    ExpiresIn=3600  # 1 час
+                )
+                download_links.append(f"Copy {i+1}: {url}")
+
+            except Exception as e:
+                await callback.message.answer(f"❌ Error creating copy {i+1}: {e}")
+
+        # Отправляем ссылки
+        links_text = "\n".join(download_links)
+        await callback.message.answer(f"✅ Your copies are ready! Download links (valid for 1 hour):\n{links_text}")
+
+    except Exception as e:
+        await callback.answer(f"❌ Error: {e}", show_alert=True)

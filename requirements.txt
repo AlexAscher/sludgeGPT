@@ -9,3 +9,4 @@ moviepy==1.0.3        # простая работа с видео (для фил
 python-dotenv==1.0.1  # хранение токенов в .env
 aiofiles==23.2.1      # асинхронная работа с файлами
 #pip install hf_xet
+boto3==1.34.0         # AWS S3 для cloud storage
